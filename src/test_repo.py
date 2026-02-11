@@ -2,7 +2,7 @@ from repo_fipe import buscar_cotacao, listar_marcas, listar_modelos, listar_vers
 
 MARCA_ALVO = "Fiat"
 MES_ALVO = 1
-ANO_ALVO = 2024
+ANO_ALVO = 2025
 
 
 def main() -> None:
