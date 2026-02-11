@@ -1,109 +1,146 @@
-Modelo de Dados (atualizado p/ “busca em pesquisa_preco”)
-1) Entidades principais
+﻿# Modelo de Dados - FIPE-LIKE (SQLite)
 
-Catálogo: Marca → Modelo → Versão
+## 1. Visao geral e objetivos
 
-Coleta: Loja, Região, Pesquisador, Pesquisa de preço
+O modelo de dados do FIPE-LIKE foi desenhado para dois objetivos principais:
 
-Consulta: resultado calculado (não necessariamente persistido) + log opcional
+1. Suportar consulta de preco medio por veiculo (cadeia `marca -> modelo -> versao -> cotacao`).
+2. Registrar telemetria das consultas realizadas (tabela `consulta_log`).
 
-2) Tabelas (mínimo + completo)
-marca
+Em termos funcionais, o catalogo de veiculos fica normalizado em tres niveis (`marca`, `modelo`, `versao`) e os valores mensais/anuais ficam em `cotacao`.
 
-id (PK)
+## 2. ERD textual
 
-nome (unique)
+Fluxo principal de dominio:
 
-modelo
+`marca (1) -> (N) modelo (1) -> (N) versao (1) -> (N) cotacao`
 
-id (PK)
+Telemetria (desacoplada por design):
 
-marca_id (FK → marca.id)
+`consulta_log` registra os parametros/resultados da consulta para auditoria e observabilidade, sem FK obrigatoria para as tabelas de catalogo.
 
-nome
+## 3. Dicionario de dados
 
-unique (marca_id, nome)
+### 3.1 Tabela `marca`
 
-versao
+| Coluna | Tipo | Regras |
+|---|---|---|
+| `id` | `INTEGER` | PK, `AUTOINCREMENT` |
+| `nome` | `TEXT` | `NOT NULL`, `UNIQUE` |
 
-id (PK)
+### 3.2 Tabela `modelo`
 
-modelo_id (FK → modelo.id)
+| Coluna | Tipo | Regras |
+|---|---|---|
+| `id` | `INTEGER` | PK, `AUTOINCREMENT` |
+| `marca_id` | `INTEGER` | `NOT NULL`, FK -> `marca(id)`, `ON DELETE RESTRICT` |
+| `nome` | `TEXT` | `NOT NULL` |
 
-nome
+Restricoes adicionais:
 
-ano_modelo
+- `UNIQUE (marca_id, nome)`
 
-unique (modelo_id, nome, ano_modelo)
+### 3.3 Tabela `versao`
 
-regiao (projeto)
+| Coluna | Tipo | Regras |
+|---|---|---|
+| `id` | `INTEGER` | PK, `AUTOINCREMENT` |
+| `modelo_id` | `INTEGER` | `NOT NULL`, FK -> `modelo(id)`, `ON DELETE RESTRICT` |
+| `nome` | `TEXT` | `NOT NULL` |
 
-id (PK)
+Restricoes adicionais:
 
-nome
+- `UNIQUE (modelo_id, nome)`
 
-cidade
+### 3.4 Tabela `cotacao`
 
-latitude_centro (opcional)
+| Coluna | Tipo | Regras |
+|---|---|---|
+| `id` | `INTEGER` | PK, `AUTOINCREMENT` |
+| `versao_id` | `INTEGER` | `NOT NULL`, FK -> `versao(id)`, `ON DELETE RESTRICT` |
+| `ano` | `INTEGER` | `NOT NULL`, `CHECK (ano BETWEEN 1900 AND 2100)` |
+| `mes` | `INTEGER` | `NOT NULL`, `CHECK (mes BETWEEN 1 AND 12)` |
+| `preco` | `REAL` | `NOT NULL`, `CHECK (preco >= 0)` |
 
-longitude_centro (opcional)
+Restricoes adicionais:
 
-loja (projeto)
+- `UNIQUE (versao_id, ano, mes)`
 
-id (PK)
+Observacao:
 
-regiao_id (FK → regiao.id)
+- No schema atual, a coluna de valor e `preco`.
+- Caso o projeto migre para `preco_medio`, a migracao deve atualizar queries/repositorio e testes em conjunto.
 
-nome
+### 3.5 Tabela `consulta_log`
 
-endereco
+| Coluna | Tipo | Regras |
+|---|---|---|
+| `id` | `INTEGER` | PK, `AUTOINCREMENT` |
+| `created_at` | `TEXT` | `NOT NULL`, default `datetime('now')` |
+| `ano` | `INTEGER` | `NOT NULL`, `CHECK (ano BETWEEN 1900 AND 2100)` |
+| `mes` | `INTEGER` | `NOT NULL`, `CHECK (mes BETWEEN 1 AND 12)` |
+| `marca_nome` | `TEXT` | `NOT NULL` |
+| `modelo_nome` | `TEXT` | `NOT NULL` |
+| `versao_nome` | `TEXT` | `NOT NULL` |
+| `preco_retornado` | `REAL` | opcional (`NULL` permitido) |
 
-status_aprovacao (pendente/aprovado)
+## 4. Integridade referencial
 
-pesquisador (projeto)
+A integridade referencial e aplicada em dois niveis:
 
-id (PK)
+1. Definicao de FK no `schema.sql` com `ON DELETE RESTRICT`.
+2. Ativacao por conexao em runtime: `PRAGMA foreign_keys = ON` em `src/db.py`.
 
-nome
+Comportamento esperado:
 
-regiao_id (FK → regiao.id)
+- Nao e permitido inserir `modelo` com `marca_id` inexistente.
+- Nao e permitido inserir `versao` com `modelo_id` inexistente.
+- Nao e permitido inserir `cotacao` com `versao_id` inexistente.
+- Nao e permitido deletar `marca` com `modelo` vinculado (mesmo principio para os demais niveis da cadeia).
 
-pesquisa_preco (captura bruta) ✅ (base para consulta)
+## 5. Indices
 
-id (PK)
+Indices ja existentes no schema:
 
-loja_id (FK → loja.id) (pode ser opcional no MVP)
+- `idx_modelo_marca_id` em `modelo(marca_id)`
+- `idx_versao_modelo_id` em `versao(modelo_id)`
+- `idx_cotacao_versao` em `cotacao(versao_id)`
+- `idx_cotacao_periodo` em `cotacao(ano, mes)`
+- `idx_log_created_at` em `consulta_log(created_at)`
+- `idx_log_periodo` em `consulta_log(ano, mes)`
 
-pesquisador_id (FK → pesquisador.id) (opcional no MVP)
+Indices recomendados (evolucao):
 
-versao_id (FK → versao.id)
+- Busca textual por nome de marca/modelo/versao:
+  - `marca(nome)` (ja coberto por `UNIQUE`, mas pode ser analisado no plano de consultas)
+  - `modelo(nome)`
+  - `versao(nome)`
+- Consulta direta de cotacao por chave funcional completa:
+  - `cotacao(versao_id, mes, ano)`
 
-data_coleta (datetime)
+Observacao: no schema atual existe `UNIQUE (versao_id, ano, mes)`, que ja cria indice util para consultas com esses tres campos.
 
-preco (decimal)
+## 6. Seed e estado inicial do banco
 
-observacao (texto opcional)
+- O banco e criado com estrutura via `src/data/init_db.py` + `src/data/schema.sql`.
+- O estado inicial apos criacao e vazio (sem dados de dominio).
+- A populacao de dados de exemplo e feita por `src/data/seed_db.py`.
+- O seed e idempotente (usa `INSERT OR IGNORE`), permitindo execucoes repetidas sem duplicar registros logicos.
 
-consulta_log (opcional)
+## 7. Versionamento e evolucao do schema
 
-id (PK)
+Recomendacoes para evoluir `schema.sql` com seguranca:
 
-dt (datetime)
+1. Nunca renomear/remover coluna em producao sem script de migracao explicito.
+2. Versionar mudancas por arquivo de migracao incremental (ex.: `migrations/001_*.sql`, `002_*.sql`).
+3. Atualizar em conjunto:
+   - schema/migracao,
+   - camada de repositorio (`src/repo_fipe.py`),
+   - testes (`src/test_repo.py` e testes de integridade).
+4. Registrar no changelog de dados:
+   - data,
+   - motivacao,
+   - impacto em retrocompatibilidade,
+   - plano de rollback.
 
-mes_ref (int)
-
-ano_ref (int)
-
-versao_id (FK)
-
-mes_usado (int)
-
-ano_usado (int)
-
-preco_resultado (decimal)
-
-3) Observação importante (para justificar no relatório)
-
-O preço “FIPE-like” não precisa estar salvo em cotacao_mensal: ele pode ser derivado de pesquisa_preco no momento da consulta.
-
-Em um sistema real, poderia existir um batch que consolida e grava cotação mensal, mas aqui será apenas projetado.
+Isso reduz risco de divergencia entre estrutura do banco, codigo e documentacao.
