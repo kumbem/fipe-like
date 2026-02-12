@@ -87,3 +87,21 @@ def buscar_cotacao(versao_id: int, mes: int, ano: int) -> float | None:
         return None
     finally:
         conn.close()
+
+
+def registrar_consulta(
+    marca_id: int, modelo_id: int, versao_id: int, mes: int, ano: int
+) -> None:
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO consulta_log (marca_id, modelo_id, versao_id, mes, ano)
+            VALUES (?, ?, ?, ?, ?);
+            """,
+            (marca_id, modelo_id, versao_id, mes, ano),
+        )
+        conn.commit()
+    finally:
+        conn.close()

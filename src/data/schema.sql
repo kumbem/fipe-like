@@ -1,4 +1,4 @@
--- src/data/schema.sql
+﻿-- src/data/schema.sql
 PRAGMA foreign_keys = ON;
 
 -- =========================
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS versao (
   FOREIGN KEY (modelo_id) REFERENCES modelo(id) ON DELETE RESTRICT
 );
 
--- Cotação (preço médio por mês/ano para uma versão)
+-- Cotacao (preco medio por mes/ano para uma versao)
 CREATE TABLE IF NOT EXISTS cotacao (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   versao_id     INTEGER NOT NULL,
@@ -39,26 +39,24 @@ CREATE TABLE IF NOT EXISTS cotacao (
 );
 
 -- =========================
--- Logs (STORY 4)
+-- Logs (consulta)
 -- =========================
 
 CREATE TABLE IF NOT EXISTS consulta_log (
-  id                INTEGER PRIMARY KEY AUTOINCREMENT,
-  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
-
-  ano               INTEGER NOT NULL CHECK (ano BETWEEN 1900 AND 2100),
-  mes               INTEGER NOT NULL CHECK (mes BETWEEN 1 AND 12),
-
-  marca_nome        TEXT NOT NULL,
-  modelo_nome       TEXT NOT NULL,
-  versao_nome       TEXT NOT NULL,
-
-  -- opcional: guardar o preço retornado (ajuda auditoria de resultado)
-  preco_retornado   REAL
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  data_hora     TEXT NOT NULL DEFAULT (datetime('now')),
+  marca_id      INTEGER NOT NULL,
+  modelo_id     INTEGER NOT NULL,
+  versao_id     INTEGER NOT NULL,
+  mes           INTEGER NOT NULL CHECK (mes BETWEEN 1 AND 12),
+  ano           INTEGER NOT NULL CHECK (ano BETWEEN 1900 AND 2100),
+  FOREIGN KEY (marca_id) REFERENCES marca(id) ON DELETE RESTRICT,
+  FOREIGN KEY (modelo_id) REFERENCES modelo(id) ON DELETE RESTRICT,
+  FOREIGN KEY (versao_id) REFERENCES versao(id) ON DELETE RESTRICT
 );
 
 -- =========================
--- Índices
+-- Indices
 -- =========================
 
 CREATE INDEX IF NOT EXISTS idx_modelo_marca_id      ON modelo(marca_id);
@@ -67,5 +65,8 @@ CREATE INDEX IF NOT EXISTS idx_versao_modelo_id     ON versao(modelo_id);
 CREATE INDEX IF NOT EXISTS idx_cotacao_versao       ON cotacao(versao_id);
 CREATE INDEX IF NOT EXISTS idx_cotacao_periodo      ON cotacao(ano, mes);
 
-CREATE INDEX IF NOT EXISTS idx_log_created_at       ON consulta_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_log_data_hora        ON consulta_log(data_hora);
 CREATE INDEX IF NOT EXISTS idx_log_periodo          ON consulta_log(ano, mes);
+CREATE INDEX IF NOT EXISTS idx_log_marca_id         ON consulta_log(marca_id);
+CREATE INDEX IF NOT EXISTS idx_log_modelo_id        ON consulta_log(modelo_id);
+CREATE INDEX IF NOT EXISTS idx_log_versao_id        ON consulta_log(versao_id);

@@ -6,6 +6,9 @@ DB_PATH = BASE_DIR / "fipe.db"
 SCHEMA_PATH = BASE_DIR / "schema.sql"
 
 def main() -> None:
+    if DB_PATH.exists():
+        DB_PATH.unlink()
+
     conn = sqlite3.connect(DB_PATH)
     try:
         with open(SCHEMA_PATH, "r", encoding="utf-8") as f:

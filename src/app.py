@@ -1,6 +1,12 @@
 ﻿import streamlit as st
 
-from repo_fipe import buscar_cotacao, listar_marcas, listar_modelos, listar_versoes
+from repo_fipe import (
+    buscar_cotacao,
+    listar_marcas,
+    listar_modelos,
+    listar_versoes,
+    registrar_consulta,
+)
 
 st.set_page_config(
     page_title="Consulta FIPE",
@@ -94,6 +100,17 @@ with resultado_container:
         if preco is None:
             st.info("Sem cotacao para o periodo selecionado")
         else:
+            try:
+                registrar_consulta(
+                    marca_sel["id"],
+                    modelo_sel["id"],
+                    versao_sel["id"],
+                    mes,
+                    ano,
+                )
+            except Exception:
+                # logging nao pode interromper o fluxo principal
+                pass
             st.success(f"Preco medio: R$ {format_brl(preco)}")
     else:
         st.caption("O resultado da consulta aparecera aqui.")
