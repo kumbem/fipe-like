@@ -1,0 +1,7 @@
+"Issue Type,Summary,Description,Epic Name,Epic Link,Priority,Assignee,Labels"
+"Epic,EPIC 1 - Consulta Tabela Fipe,Projeto da funcionalidade de consulta de preços de veículos baseada na Tabela FIPE,,,High,,"
+"Story,Tela de Consulta FIPE (Frontend),Criar a tela pública de consulta de preços por marca/modelo/ano,,EPIC 1 - Consulta Tabela Fipe,Medium,,frontend"
+"Task,Layout da tela (UI),Criar layout da tela de consulta com campos dropdown e botão de busca,,EPIC 1 - Consulta Tabela Fipe,Medium,,frontend,ui"
+"Task,Formulário de filtros,Implementar selects de Marca / Modelo / Ano,,EPIC 1 - Consulta Tabela Fipe,Medium,,frontend"
+"Task,Exibição do resultado,Mostrar preço FIPE retornado da base,,EPIC 1 - Consulta Tabela Fipe,Medium,,frontend"
+"Task,Validação de campos,Validar seleção obrigatória antes da consulta,,EPIC 1 - Consulta Tabela Fipe,Low,,frontend"
