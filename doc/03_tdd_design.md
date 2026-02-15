@@ -1,99 +1,86 @@
-Design / TDD (atualizado com fallback)
-1) Arquitetura (monólito com responsabilidades)
+# 1) Visao Geral da Arquitetura
 
-UI (Streamlit) → Serviços (Domínio) → Repositórios (SQLite)
+Arquitetura em camadas (monolito organizado):
 
-UI: inputs/outputs
+- Interface: `src/app.py` (Streamlit)
+- Repositorio: `src/repo_fipe.py`
+- Persistencia: SQLite (`src/data/fipe.db`), conexao em `src/db.py`
 
-Domínio: regra de negócio (média mensal + fallback)
+Separacao de responsabilidades:
 
-Repo: SQL e acesso ao SQLite
+- A camada de interface coleta filtros, aciona o repositorio e apresenta resultado.
+- A camada de repositorio concentra SQL e mapeamento de retorno para a aplicacao.
+- A camada de persistencia executa armazenamento e integridade referencial.
 
-2) Componentes e interfaces
-UI (Streamlit)
+Justificativa do monolito organizado:
 
-UserQuotePage
+- Escopo pequeno e baixa latencia local favorecem deploy simples.
+- Menor custo operacional que arquitetura distribuida para este caso.
+- Fronteiras internas claras permitem evolucao incremental sem acoplamento da UI ao SQL.
 
-Inputs: mes_ref, ano_ref, marca_id, modelo_id, versao_id
+# 2) Fluxo da Consulta (Diagrama Sequencial - texto)
 
-Output: preco, mes_usado/ano_usado, mensagens
+1. Usuario seleciona `marca`, `modelo`, `versao`, `mes` e `ano` na interface Streamlit.
+2. Frontend chama `repo_fipe.buscar_cotacao(versao_id, mes, ano)`.
+3. Repositorio abre conexao via `db.get_connection()`.
+4. Repositorio executa query em `cotacao` por `versao_id` e periodo `<=` ao selecionado.
+5. Repositorio retorna:
+   - cotacao exata do mes/ano, quando existir;
+   - fallback para o ultimo periodo anterior disponivel, quando nao existir cotacao exata;
+   - `None`, quando nao houver nenhum periodo anterior.
+6. Frontend decide:
+   - Se `None`: exibe "Sem cotacao para o periodo selecionado".
+   - Se valor com fallback: informa periodo solicitado e periodo efetivamente usado.
+   - Se valor: exibe preco formatado e tenta registrar log.
+7. Frontend chama `repo_fipe.registrar_consulta(...)`, que executa `INSERT` em `consulta_log`.
+8. Conexoes sao fechadas em `finally` no repositorio (consulta e log).
 
-Domínio
-CatalogService
+# 3) Decisoes Tecnicas Importantes
 
-list_brands()
+- Por que SQLite?
+  - Banco embarcado, suficiente para o volume do projeto e simples de distribuir.
+  - Remove dependencia de servidor de banco para execucao local e avaliacao.
+- Por que conexao por uso?
+  - Evita conexao global compartilhada entre sessoes/threads do Streamlit.
+  - Reduz risco de estado residual e contention de conexao.
+- Por que `PRAGMA foreign_keys = ON`?
+  - Em SQLite, FKs nao sao garantidas sem ativacao por conexao.
+  - Garante integridade entre `marca`, `modelo`, `versao`, `cotacao` e `consulta_log`.
+- Por que log nao pode quebrar fluxo?
+  - Objetivo principal da tela e retornar preco; logging e concern secundario.
+  - Falha de telemetria nao pode causar indisponibilidade da funcionalidade principal.
+- Por que sem SQL no frontend?
+  - Mantem UI focada em experiencia e orquestracao.
+  - Centraliza acesso a dados no repositorio, facilitando manutencao e testes.
 
-list_models(marca_id)
+# 4) Modelo de Responsabilidades
 
-list_versions(modelo_id)
 
-QuoteService
+| Camada | Tipo Arquitetural | Responsabilidade | Nao faz |
+|---|---|---|---|
+| `app.py` | Interface | Renderizacao da UI e orquestracao do fluxo | Nao executa SQL |
+| `repo_fipe.py` | Data Access Layer | Encapsula queries e persistencia | Nao renderiza UI |
+| `db.py` | Infraestrutura | Configuracao e gerenciamento de conexao | Nao contem regra de negocio nem query |
 
-get_reference_price(mes_ref, ano_ref, versao_id) -> QuoteResult
+# 5) Riscos Tecnicos e Limitacoes
 
-Regra do serviço:
+Embora o sistema atenda ao escopo proposto, existem limitacoes estruturais importantes:
 
-Buscar pesquisas no mês solicitado
+1. Uso de SQLite
+   - Adequado para projeto educacional.
+   - Nao escalavel horizontalmente.
+   - Sem controle avancado de concorrencia.
+2. Ausencia de Autenticacao
+   - Sistema de consulta e publico.
+   - Nao ha controle de identidade ou autorizacao.
+3. Sem Cache
+   - Toda consulta acessa diretamente o banco.
+   - Pode impactar performance em grande volume.
+4. Sem Versionamento de Schema
+   - Nao ha ferramenta de migracao (ex: Alembic).
+   - Alteracoes futuras exigiriam recriacao manual.
+5. Log nao armazena valor exibido
+   - O sistema registra os parametros da consulta.
+   - Nao registra o preco exibido no momento.
+   - Caso o valor mude no futuro, o historico nao refletira exatamente o valor visualizado pelo usuario.
 
-Se houver, calcular media_mes
-
-Se não houver, buscar mês anterior mais recente com dados e calcular média
-
-Se não houver dados em nenhum mês anterior, retornar “sem cotação”
-
-Estrutura de retorno (QuoteResult):
-
-status: OK | FALLBACK | NOT_FOUND
-
-preco
-
-mes_usado, ano_usado
-
-mensagem
-
-Repositórios (SQLite)
-CatalogRepository
-
-get_brands()
-
-get_models_by_brand(marca_id)
-
-get_versions_by_model(modelo_id)
-
-PriceResearchRepository
-
-get_prices_for_month(versao_id, year, month) -> list[preco]
-
-get_latest_month_with_prices_before(versao_id, year, month) -> (year, month) | None
-
-LogRepository (opcional)
-
-insert_query_log(...)
-
-3) Diagrama de sequência (texto)
-
-Usuário consulta preço
-
-UI chama QuoteService.get_reference_price(mes_ref, ano_ref, versao_id)
-
-Service chama repo: get_prices_for_month(...)
-
-Se vazio, chama repo: get_latest_month_with_prices_before(...)
-
-Com (ano,mes) encontrado, chama get_prices_for_month(...) novamente
-
-Service calcula média e retorna QuoteResult
-
-UI exibe preço + mês efetivo usado
-
-(opcional) Service chama LogRepository.insert_query_log(...)
-
-4) Casos de teste (lista)
-
-CT01: mês tem dados → status OK + média correta
-
-CT02: mês sem dados, existe anterior → status FALLBACK + mês_usado correto
-
-CT03: nenhum mês anterior → status NOT_FOUND + mensagem clara
-
-CT04: dropdown inválido (versao inexistente) → erro tratado / mensagem
