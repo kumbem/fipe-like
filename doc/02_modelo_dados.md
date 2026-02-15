@@ -1,23 +1,25 @@
-﻿# Modelo de Dados - FIPE-LIKE (SQLite)
+# Modelo de Dados - FIPE-LIKE (SQLite)
 
-## 1. Visao geral e objetivos
+## 1. Objetivo e escopo
 
-O modelo de dados do FIPE-LIKE foi desenhado para dois objetivos principais:
+Este documento descreve o modelo fisico de dados usado pelo sistema FIPE-LIKE.
+O objetivo do modelo e suportar dois fluxos:
 
-1. Suportar consulta de preco medio por veiculo (cadeia `marca -> modelo -> versao -> cotacao`).
-2. Registrar telemetria das consultas realizadas (tabela `consulta_log`).
+1. Catalogo e consulta de preco por cadeia `marca -> modelo -> versao -> cotacao`.
+2. Registro de auditoria das consultas em `consulta_log`.
 
-Em termos funcionais, o catalogo de veiculos fica normalizado em tres niveis (`marca`, `modelo`, `versao`) e os valores mensais/anuais ficam em `cotacao`.
+## 2. Estrutura relacional (ERD textual)
 
-## 2. ERD textual
+Relacionamentos principais:
 
-Fluxo principal de dominio:
+- `marca (1) -> (N) modelo`
+- `modelo (1) -> (N) versao`
+- `versao (1) -> (N) cotacao`
+- `marca/modelo/versao (1) -> (N) consulta_log`
 
-`marca (1) -> (N) modelo (1) -> (N) versao (1) -> (N) cotacao`
+Decisao de modelagem:
 
-Telemetria (desacoplada por design):
-
-`consulta_log` registra os parametros/resultados da consulta para auditoria e observabilidade, sem FK obrigatoria para as tabelas de catalogo.
+- `consulta_log` referencia entidades por ID (FK), garantindo rastreabilidade consistente com o catalogo.
 
 ## 3. Dicionario de dados
 
@@ -36,9 +38,7 @@ Telemetria (desacoplada por design):
 | `marca_id` | `INTEGER` | `NOT NULL`, FK -> `marca(id)`, `ON DELETE RESTRICT` |
 | `nome` | `TEXT` | `NOT NULL` |
 
-Restricoes adicionais:
-
-- `UNIQUE (marca_id, nome)`
+Restricao adicional: `UNIQUE (marca_id, nome)`
 
 ### 3.3 Tabela `versao`
 
@@ -48,9 +48,7 @@ Restricoes adicionais:
 | `modelo_id` | `INTEGER` | `NOT NULL`, FK -> `modelo(id)`, `ON DELETE RESTRICT` |
 | `nome` | `TEXT` | `NOT NULL` |
 
-Restricoes adicionais:
-
-- `UNIQUE (modelo_id, nome)`
+Restricao adicional: `UNIQUE (modelo_id, nome)`
 
 ### 3.4 Tabela `cotacao`
 
@@ -62,85 +60,84 @@ Restricoes adicionais:
 | `mes` | `INTEGER` | `NOT NULL`, `CHECK (mes BETWEEN 1 AND 12)` |
 | `preco` | `REAL` | `NOT NULL`, `CHECK (preco >= 0)` |
 
-Restricoes adicionais:
-
-- `UNIQUE (versao_id, ano, mes)`
-
-Observacao:
-
-- No schema atual, a coluna de valor e `preco`.
-- Caso o projeto migre para `preco_medio`, a migracao deve atualizar queries/repositorio e testes em conjunto.
+Restricao adicional: `UNIQUE (versao_id, ano, mes)`
 
 ### 3.5 Tabela `consulta_log`
 
 | Coluna | Tipo | Regras |
 |---|---|---|
 | `id` | `INTEGER` | PK, `AUTOINCREMENT` |
-| `created_at` | `TEXT` | `NOT NULL`, default `datetime('now')` |
-| `ano` | `INTEGER` | `NOT NULL`, `CHECK (ano BETWEEN 1900 AND 2100)` |
+| `data_hora` | `TEXT` | `NOT NULL`, default `datetime('now')` |
+| `marca_id` | `INTEGER` | `NOT NULL`, FK -> `marca(id)`, `ON DELETE RESTRICT` |
+| `modelo_id` | `INTEGER` | `NOT NULL`, FK -> `modelo(id)`, `ON DELETE RESTRICT` |
+| `versao_id` | `INTEGER` | `NOT NULL`, FK -> `versao(id)`, `ON DELETE RESTRICT` |
 | `mes` | `INTEGER` | `NOT NULL`, `CHECK (mes BETWEEN 1 AND 12)` |
-| `marca_nome` | `TEXT` | `NOT NULL` |
-| `modelo_nome` | `TEXT` | `NOT NULL` |
-| `versao_nome` | `TEXT` | `NOT NULL` |
-| `preco_retornado` | `REAL` | opcional (`NULL` permitido) |
+| `ano` | `INTEGER` | `NOT NULL`, `CHECK (ano BETWEEN 1900 AND 2100)` |
 
-## 4. Integridade referencial
+## 4. Regras de integridade
 
-A integridade referencial e aplicada em dois niveis:
+A integridade e garantida por:
 
-1. Definicao de FK no `schema.sql` com `ON DELETE RESTRICT`.
-2. Ativacao por conexao em runtime: `PRAGMA foreign_keys = ON` em `src/db.py`.
+1. FKs no `schema.sql` com `ON DELETE RESTRICT`.
+2. Ativacao de FK por conexao em runtime com `PRAGMA foreign_keys = ON` (`src/db.py`).
 
-Comportamento esperado:
+Invariantes esperadas:
 
-- Nao e permitido inserir `modelo` com `marca_id` inexistente.
-- Nao e permitido inserir `versao` com `modelo_id` inexistente.
-- Nao e permitido inserir `cotacao` com `versao_id` inexistente.
-- Nao e permitido deletar `marca` com `modelo` vinculado (mesmo principio para os demais niveis da cadeia).
+- Nao existe `modelo` sem `marca` valida.
+- Nao existe `versao` sem `modelo` valido.
+- Nao existe `cotacao` sem `versao` valida.
+- Nao existe `consulta_log` com IDs orfaos.
+- Nao existe duplicidade de cotacao para a mesma chave funcional (`versao_id`, `ano`, `mes`).
 
-## 5. Indices
+## 5. Indices e impacto em consulta
 
-Indices ja existentes no schema:
+Indices definidos:
 
 - `idx_modelo_marca_id` em `modelo(marca_id)`
 - `idx_versao_modelo_id` em `versao(modelo_id)`
 - `idx_cotacao_versao` em `cotacao(versao_id)`
 - `idx_cotacao_periodo` em `cotacao(ano, mes)`
-- `idx_log_created_at` em `consulta_log(created_at)`
+- `idx_log_data_hora` em `consulta_log(data_hora)`
 - `idx_log_periodo` em `consulta_log(ano, mes)`
+- `idx_log_marca_id` em `consulta_log(marca_id)`
+- `idx_log_modelo_id` em `consulta_log(modelo_id)`
+- `idx_log_versao_id` em `consulta_log(versao_id)`
 
-Indices recomendados (evolucao):
+Observacao tecnica:
 
-- Busca textual por nome de marca/modelo/versao:
-  - `marca(nome)` (ja coberto por `UNIQUE`, mas pode ser analisado no plano de consultas)
-  - `modelo(nome)`
-  - `versao(nome)`
-- Consulta direta de cotacao por chave funcional completa:
-  - `cotacao(versao_id, mes, ano)`
+- O `UNIQUE (versao_id, ano, mes)` em `cotacao` tambem gera indice util para busca por chave completa.
 
-Observacao: no schema atual existe `UNIQUE (versao_id, ano, mes)`, que ja cria indice util para consultas com esses tres campos.
+## 6. Operacao e evolucao
 
-## 6. Seed e estado inicial do banco
+- Estrutura do banco: `src/data/schema.sql` via `src/data/init_db.py`.
+- Popular dados de exemplo: `src/data/seed_db.py`.
+- Evolucao do schema deve ser sincronizada com:
+  - Repositorio (`src/repo_fipe.py`)
+  - Testes (`src/test_repo.py`)
+  - Documentacao de dados (`doc/02_modelo_dados.md`)
 
-- O banco e criado com estrutura via `src/data/init_db.py` + `src/data/schema.sql`.
-- O estado inicial apos criacao e vazio (sem dados de dominio).
-- A populacao de dados de exemplo e feita por `src/data/seed_db.py`.
-- O seed e idempotente (usa `INSERT OR IGNORE`), permitindo execucoes repetidas sem duplicar registros logicos.
+## Chave Funcional do Sistema
 
-## 7. Versionamento e evolucao do schema
+A entidade `cotacao` representa a cotacao mensal oficial de uma versao de veiculo.
 
-Recomendacoes para evoluir `schema.sql` com seguranca:
+A chave funcional do dominio e composta por:
 
-1. Nunca renomear/remover coluna em producao sem script de migracao explicito.
-2. Versionar mudancas por arquivo de migracao incremental (ex.: `migrations/001_*.sql`, `002_*.sql`).
-3. Atualizar em conjunto:
-   - schema/migracao,
-   - camada de repositorio (`src/repo_fipe.py`),
-   - testes (`src/test_repo.py` e testes de integridade).
-4. Registrar no changelog de dados:
-   - data,
-   - motivacao,
-   - impacto em retrocompatibilidade,
-   - plano de rollback.
+`(versao_id, ano, mes)`
 
-Isso reduz risco de divergencia entre estrutura do banco, codigo e documentacao.
+Isso significa que:
+
+- Para cada versao de veiculo
+- Em um determinado mes
+- Em um determinado ano
+- Deve existir no maximo uma unica cotacao registrada.
+
+Essa regra de negocio e garantida no modelo fisico atraves da constraint:
+
+`UNIQUE (versao_id, ano, mes)`
+
+Essa decisao assegura:
+
+- Consistencia temporal
+- Reprodutibilidade das consultas
+- Impossibilidade de duplicacao de cotacoes mensais
+

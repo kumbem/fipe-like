@@ -1,84 +1,69 @@
-Escopo e Detalhamento Funcional (atualizado)
-1) Objetivo do sistema
+# Escopo do Projeto FIPE-like
 
-Construir um sistema FIPE-like para captura de preços em lojas e consulta pública de referência.
-O sistema completo suporta múltiplos papéis, mas nesta semana será implementada apenas a interface de consulta do Usuário (sem login).
+## 1. Objetivo
 
-2) Escopo do que vamos ENTREGAR (no desafio)
-Entrega implementada (código)
+Definir o escopo funcional e tecnico do MVP FIPE-like implementado neste repositorio.
+O foco da entrega e disponibilizar uma tela de consulta de preco de veiculo baseada em dados locais (SQLite), com interface Streamlit e arquitetura em camadas.
 
-✅ Tela do Usuário (Consulta):
+## 2. Escopo do MVP (Implementado)
 
-Usuário escolhe Mês/Ano de referência
+Funcionalidades entregues:
 
-Seleciona Marca → Modelo → Versão/Ano-modelo
+- Consulta publica sem autenticacao.
+- Selecao encadeada de `marca -> modelo -> versao`.
+- Selecao de `mes` e `ano` para consulta.
+- Busca de cotacao por chave (`versao_id`, `mes`, `ano`).
+- Exibicao de preco medio quando existe cotacao.
+- Exibicao de mensagem clara quando nao existe cotacao para o periodo.
+- Registro de log de consulta em `consulta_log` quando ha resultado.
+- Tolerancia a falha no log (a consulta principal nao e interrompida).
 
-Sistema calcula o preço de referência do mês, usando dados de pesquisa_preco
+## 3. Escopo Tecnico
 
-Regra de ausência: se não houver pesquisa no mês escolhido, o sistema busca o último mês anterior disponível (fallback) e informa qual mês foi usado
+Componentes do MVP:
 
-Entrega projetada (documento, não implementada)
+- Interface: `src/app.py` (Streamlit).
+- Repositorio de dados: `src/repo_fipe.py`.
+- Conexao e configuracao do banco: `src/db.py`.
+- Persistencia local: SQLite em `src/data/fipe.db`.
+- Schema e inicializacao: `src/data/schema.sql` e `src/data/init_db.py`.
 
-✅ Protótipos/fluxos para:
+## 4. Requisitos Funcionais
 
-Admin (gestão de usuários/perfis)
+- RF01: listar marcas em ordem alfabetica.
+- RF02: listar modelos filtrados por marca.
+- RF03: listar versoes filtradas por modelo.
+- RF04: consultar cotacao por versao, mes e ano.
+- RF05: exibir preco formatado em BRL quando houver cotacao.
+- RF06: informar ausencia de cotacao quando nao houver dados.
+- RF07: registrar consulta bem-sucedida com marca/modelo/versao/mes/ano.
 
-Gerente (cadastro catálogo: marca/modelo/versões e atributos)
+## 5. Requisitos Nao Funcionais
 
-Coordenador (agenda de lojas por região + aprovação)
+- RNF01: integridade referencial obrigatoria (FKs ativas por conexao).
+- RNF02: separacao de responsabilidades (UI sem SQL direto).
+- RNF03: conexao com banco por uso e fechamento em `finally`.
+- RNF04: operacao local sem dependencia de servidor de banco externo.
 
-Pesquisador (registro de pesquisas)
+## 6. Fora de Escopo (Atual)
 
-Lojista (cadastro de loja)
+- Login e controle de acesso por perfil.
+- CRUD administrativo de catalogo e usuarios.
+- Workflow de aprovacao operacional (coordenador, pesquisador, lojista).
+- Integracao com API externa FIPE.
+- Pipeline batch de consolidacao mensal.
+- Observabilidade avancada e deploy produtivo.
 
-Batch mensal (fechamento do mês e auditoria de qualidade)
+## 7. Criterios de Aceite
 
-3) Fora de escopo (nesta semana)
+- CA01: usuario consegue selecionar marca, modelo e versao de forma dependente.
+- CA02: consulta com dados retorna preco e nao apresenta erro na interface.
+- CA03: consulta sem dados retorna mensagem "Sem cotacao para o periodo selecionado".
+- CA04: consulta com resultado registra nova linha em `consulta_log`.
+- CA05: falha no registro de log nao impede exibicao do preco.
 
-Login/controle de acesso
+## 8. Premissas e Restricoes
 
-CRUD completo dos papéis
-
-Workflow real de aprovação e agenda semanal
-
-Integração com FIPE real
-
-Deploy / observabilidade
-
-4) Papéis e responsabilidades (sistema completo)
-
-Admin: gerencia usuários e perfis
-
-Gerente: gerencia catálogo (marca/modelo/versão)
-
-Coordenador: define lojas da semana e aprova inclusão
-
-Lojista: cadastra loja (pendente de aprovação)
-
-Pesquisador: registra cotações coletadas
-
-Usuário: consulta preço (implementado)
-
-Batch (projetado): calcula média mensal, valida dados e fecha referência
-
-5) Fluxo principal (implementado): Consultar preço
-
-Usuário escolhe mês/ano + versão
-
-Sistema busca pesquisas na tabela pesquisa_preco dentro do mês
-
-Se existir, calcula média do mês e retorna como preço de referência
-
-Se não existir, busca último mês anterior com dados e retorna média desse mês, informando o fallback
-
-Exibe resultado ao usuário
-
-6) Critérios de aceite (MVP Usuário)
-
-Dropdowns dependentes (marca filtra modelos, modelo filtra versões)
-
-Retorna preço e mês efetivo usado
-
-Caso sem dados em nenhum mês anterior: mensagem clara “sem cotação disponível”
-
-(Opcional) registra log de consulta
+- O banco `src/data/fipe.db` deve existir antes da execucao da app.
+- O schema vigente usa `cotacao.preco` como coluna de valor.
+- O conjunto de anos no frontend esta fixo em `[2023, 2024, 2025]` no estado atual.
